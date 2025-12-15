@@ -2,17 +2,24 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// 1. 輔助函式：從 public 資料夾載入字型
-const loadFont = async (url) => {
+// 1. 輔助函式：載入字型 (加入更強的錯誤檢查)
+const loadFont = async (filename) => {
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`找不到字型檔: ${url}`);
+    // 取得當前網站的根目錄網址，例如 http://localhost:5173
+    const baseUrl = window.location.origin;
+    const fullUrl = `${baseUrl}/${filename}`;
+    
+    console.log(`正在嘗試載入字型: ${fullUrl}`); // 在 Console 顯示路徑，方便除錯
+
+    const response = await fetch(fullUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP 錯誤! 狀態: ${response.status}`);
+    }
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         if (reader.result) {
-          // 移除 Data URI 前綴，只取 Base64
           resolve(reader.result.split(',')[1]); 
         } else {
           resolve(null);
@@ -22,7 +29,7 @@ const loadFont = async (url) => {
       reader.readAsDataURL(blob);
     });
   } catch (error) {
-    console.error("字型載入錯誤:", error);
+    console.error("❌ 字型檔載入失敗:", error);
     return null;
   }
 };
@@ -32,20 +39,24 @@ export const generateChecklistPDF = async (data) => {
     const doc = new jsPDF();
 
     // 2. 載入中文字型
-    // 這裡會去抓取您放在 public 資料夾內的檔案
-    const fontBase64 = await loadFont('/NotoSansTC-Regular.ttf');
+    // 使用 NotoSansTC-Regular.ttf
+    const fontBase64 = await loadFont('NotoSansTC-Regular.ttf');
     
     if (fontBase64) {
       doc.addFileToVFS('NotoSansTC.ttf', fontBase64);
       doc.addFont('NotoSansTC.ttf', 'NotoSansTC', 'normal');
       doc.setFont('NotoSansTC');
+      console.log("✅ 中文字型載入成功！");
     } else {
-      alert("⚠️ 警告：無法載入中文字型，PDF 可能會出現亂碼。\n請確認 public 資料夾內是否有 NotoSansTC-Regular.ttf 檔案。");
+      // 如果載入失敗，跳出視窗警告使用者
+      alert("⚠️ 字型載入失敗！\n\n這會導致 PDF 出現亂碼。\n請按 F12 開啟 Console，將紅色錯誤訊息截圖給工程師。");
     }
 
-    // 3. 設定樣式
+    // 3. 設定樣式 (強制所有表格使用 NotoSansTC)
+    const fontName = fontBase64 ? 'NotoSansTC' : 'helvetica';
+    
     const styles = { 
-      font: fontBase64 ? 'NotoSansTC' : 'helvetica', 
+      font: fontName, 
       fontStyle: 'normal', 
       fontSize: 10, 
       cellPadding: 1.5, 
@@ -54,7 +65,7 @@ export const generateChecklistPDF = async (data) => {
     };
     
     const headStyles = { 
-      font: fontBase64 ? 'NotoSansTC' : 'helvetica', 
+      font: fontName, 
       fillColor: [240, 240, 240], 
       textColor: [0, 0, 0], 
       fontStyle: 'bold', 
@@ -67,7 +78,7 @@ export const generateChecklistPDF = async (data) => {
     const textCheck = (val, target) => val === target ? '■' : '□';
 
     // ---------------------------------------------------------
-    // 標題與基本資料
+    // 開始繪製 PDF 內容
     // ---------------------------------------------------------
     doc.setFontSize(16);
     doc.text("安澤健康顧問 (ANZECARE CONSULTING)", 105, 15, { align: "center" });
@@ -97,9 +108,7 @@ export const generateChecklistPDF = async (data) => {
 
     let finalY = doc.lastAutoTable.finalY + 5;
 
-    // ---------------------------------------------------------
-    // 第一部分：行政準備
-    // ---------------------------------------------------------
+    // Part 1: 行政準備
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
     doc.text("第一部分：行前/行政準備檢核 (Pre-visit)", 14, finalY);
@@ -124,9 +133,7 @@ export const generateChecklistPDF = async (data) => {
     
     finalY = doc.lastAutoTable.finalY + 5;
 
-    // ---------------------------------------------------------
-    // 第二部分：現場危害
-    // ---------------------------------------------------------
+    // Part 2: 現場危害
     doc.setFont(undefined, 'bold');
     doc.text("第二部分：現場危害與資源盤點 (On-site Walkthrough)", 14, finalY);
     
@@ -162,9 +169,7 @@ export const generateChecklistPDF = async (data) => {
 
     if (doc.lastAutoTable.finalY > 250) { doc.addPage(); finalY = 20; } else { finalY = doc.lastAutoTable.finalY + 5; }
 
-    // ---------------------------------------------------------
-    // 第三部分：四大計畫 PDCA
-    // ---------------------------------------------------------
+    // Part 3: PDCA
     doc.setFont(undefined, 'bold');
     doc.text("第三部分：四大計畫落實度深查 (PDCA Check)", 14, finalY);
     
@@ -194,9 +199,7 @@ export const generateChecklistPDF = async (data) => {
 
     finalY = doc.lastAutoTable.finalY + 5;
     
-    // ---------------------------------------------------------
-    // 第四部分：健康管理現況評估
-    // ---------------------------------------------------------
+    // Part 4: 健康管理
     doc.setFont(undefined, 'bold');
     doc.text("第四部分：健康管理現況評估", 14, finalY);
 
@@ -219,9 +222,7 @@ export const generateChecklistPDF = async (data) => {
 
     finalY = doc.lastAutoTable.finalY + 10;
 
-    // ---------------------------------------------------------
-    // 第五部分：年度服務策略規劃
-    // ---------------------------------------------------------
+    // Part 5: 策略規劃
     doc.setFont(undefined, 'bold');
     doc.setFontSize(11);
     doc.text("第五部分：年度服務策略規劃 (Action Plan)", 14, finalY);
@@ -247,6 +248,6 @@ export const generateChecklistPDF = async (data) => {
 
   } catch (error) {
     console.error("PDF 生成錯誤:", error);
-    alert(`PDF 生成失敗: ${error.message}\n請確認 NotoSansTC-Regular.ttf 是否在 public 資料夾中`);
+    alert(`PDF 生成失敗: ${error.message}\n請確認 public 資料夾下有 NotoSansTC-Regular.ttf 檔案`);
   }
 };
